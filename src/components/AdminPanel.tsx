@@ -67,10 +67,10 @@ export default function AdminPanel({
 
   // Customer Profile State
   const [customerEmail, setCustomerEmail] = useState(() => {
-    return localStorage.getItem('obsidian_customer_email') || 'kmoon5330@gmail.com';
+    return localStorage.getItem('obsidian_customer_email') || '';
   });
   const [customerName, setCustomerName] = useState(() => {
-    return localStorage.getItem('obsidian_customer_name') || 'Karl Moon';
+    return localStorage.getItem('obsidian_customer_name') || '';
   });
   const [customerAddress, setCustomerAddress] = useState(() => {
     return localStorage.getItem('obsidian_customer_address') || '88 Galaxy Way, Suite-B';
@@ -85,7 +85,7 @@ export default function AdminPanel({
     return localStorage.getItem('obsidian_customer_zip') || '06120';
   });
   const [customerLoggedIn, setCustomerLoggedIn] = useState(() => {
-    return localStorage.getItem('obsidian_customer_logged_in') !== 'false';
+    return localStorage.getItem('obsidian_customer_logged_in') === 'true';
   });
 
   // Track expanded order in history list
@@ -95,22 +95,25 @@ export default function AdminPanel({
   const [inputEmail, setInputEmail] = useState('');
 
   // Local Accounts Database helper
+  // No accounts are seeded. On first run the list is empty and the
+  // panel offers first-account creation instead (see isFirstRun).
   const getRegisteredUsers = (): Array<{email: string; password: string; name: string}> => {
     const raw = localStorage.getItem('obsidian_registered_users');
-    if (!raw) {
-      const defaultUsers = [
-        { email: 'kmoon5330@gmail.com', password: 'mypassword', name: 'Karl Moon' },
-        { email: 'sherlock@scotlandyard.gov', password: 'mypassword', name: 'Sherlock Holmes' }
-      ];
-      localStorage.setItem('obsidian_registered_users', JSON.stringify(defaultUsers));
-      return defaultUsers;
-    }
+    if (!raw) return [];
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
     }
   };
+
+  // First-run state: true while no account has been created yet.
+  const [isFirstRun, setIsFirstRun] = useState(() => getRegisteredUsers().length === 0);
+
+  useEffect(() => {
+    if (isFirstRun) setIsRegistering(true);
+  }, [isFirstRun]);
 
   // Synchronize dynamic status of security options based on the active session email
   useEffect(() => {
@@ -163,12 +166,17 @@ export default function AdminPanel({
     const emailToCompare = emailToUse.toLowerCase();
     const passedKey = password.trim();
 
+    const registeredUsers = getRegisteredUsers();
+
     // Check Admin Credentials
+    // There is no built-in admin password. An admin signs in with an
+    // account that was created through registration like any other
+    // account and stored in the registered users list.
     const isAdminId = emailToCompare === 'admin' || emailToCompare === 'admin@obsidian.com';
 
-    if (isAdminId) {
-      const isAdminKey = passedKey === 'admin123';
-      if (isAdminKey) {
+    if (isAdminId && !isRegistering) {
+      const adminUser = registeredUsers.find(u => u.email.toLowerCase() === emailToCompare);
+      if (adminUser && adminUser.password === passedKey) {
         // Direct Login without multi-factor authentication requirements
         setAdminLoggedIn(true);
         setInputEmail('');
@@ -184,8 +192,6 @@ export default function AdminPanel({
     }
 
     // Customer Authentication Flow
-    const registeredUsers = getRegisteredUsers();
-
     if (isRegistering) {
       if (passedKey !== confirmPassword.trim()) {
         setShaking(true);
@@ -206,6 +212,7 @@ export default function AdminPanel({
       const newAccount = { email: emailToUse, password: passedKey, name: defaultName };
       const updatedList = [...registeredUsers, newAccount];
       localStorage.setItem('obsidian_registered_users', JSON.stringify(updatedList));
+      setIsFirstRun(false);
 
       // Query security levels configured on this brand new customer profile (default: only email OTP required)
       const userTotpActive = localStorage.getItem(`obsidian_totp_enabled_${emailToCompare}`) === 'true';
@@ -989,11 +996,16 @@ export default function AdminPanel({
                     </div>
                     <div>
                       <h2 className="text-white font-serif text-2xl font-bold uppercase tracking-wider">
-                        {isRegistering ? 'Create Account' : 'Profile Portal'}
+                        {isFirstRun ? 'Create First Account' : isRegistering ? 'Create Account' : 'Profile Portal'}
                       </h2>
                       <p className="text-stone-500 font-mono text-[10px] tracking-widest uppercase mt-1">
                         Secure Client Identification Mode
                       </p>
+                      {isFirstRun && (
+                        <p className="text-stone-400 font-sans text-xs mt-2">
+                          No accounts exist yet. Create the first account to get started.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -1050,7 +1062,7 @@ export default function AdminPanel({
                       type="submit"
                       className="w-full py-4 mt-2 bg-white hover:bg-[#E94560] hover:text-white hover:shadow-[0_0_20px_rgba(233,69,96,0.3)] text-black font-sans text-xs tracking-[0.25em] font-bold uppercase transition-all cursor-pointer shadow-lg"
                     >
-                      {isRegistering ? 'Register Client File' : 'Verify Session'}
+                      {isFirstRun ? 'Create First Account' : isRegistering ? 'Register Client File' : 'Verify Session'}
                     </button>
 
                     <div className="relative flex py-1 items-center justify-center">
@@ -1077,6 +1089,7 @@ export default function AdminPanel({
                     </p>
                   </form>
 
+                  {!isFirstRun && (
                   <div className="mt-5 text-center">
                     <button
                       type="button"
@@ -1087,12 +1100,13 @@ export default function AdminPanel({
                       }}
                       className="text-stone-400 hover:text-white font-mono text-[10px] tracking-widest uppercase transition-colors uppercase underline cursor-pointer"
                     >
-                      {isRegistering 
-                        ? 'Already have an account? Sign In' 
+                      {isRegistering
+                        ? 'Already have an account? Sign In'
                         : 'Need an account? Create a new account'
                       }
                     </button>
                   </div>
+                  )}
 
                   <button
                     onClick={() => setCurrentPage('home')}
